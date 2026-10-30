@@ -1,0 +1,52 @@
+{{define "head" -}}
+<!DOCTYPE html>
+<html lang="en"><head>
+    <title>{{.Title}} · Setec</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="htmx-config" content='{"allowEval":false,"includeIndicatorStyles":false,"historyCacheSize":0,"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"[45]..","swap":true,"error":true}]}' />
+    <link rel="stylesheet" type="text/css" href="/static/style.css" />
+    <script src="/static/htmx.min.js" defer></script>
+    <script src="/static/app.js" defer></script>
+</head><body>
+<header class="topbar">
+    <div class="topbar-inner">
+        <a class="brand" href="/">{{template "icon-logo"}}<span>Setec</span></a>
+        {{- with .Caller}}
+        <div class="user" title="Signed in as {{.}}">
+            <span class="avatar" aria-hidden="true">{{initial .}}</span>
+            <span class="user-name">{{.}}</span>
+        </div>
+        {{- end}}
+    </div>
+</header>
+<main>
+{{- end}}
+
+{{define "foot" -}}
+</main>
+<div id="flash" class="toast-region" aria-live="polite"></div>
+</body>
+</html>
+{{- end}}
+
+{{/* flash is swapped out-of-band into the toast region in the page footer. */}}
+{{define "flash" -}}
+<div id="flash" class="toast-region" aria-live="polite" hx-swap-oob="true">
+    {{- with .Message}}
+    <div class="toast{{if $.Error}} toast-error{{end}}" role="{{if $.Error}}alert{{else}}status{{end}}"{{if not $.Error}} data-autodismiss{{end}}>
+        <span>{{.}}</span>
+        <button type="button" class="toast-close" data-dismiss aria-label="Dismiss">{{template "icon-x"}}</button>
+    </div>
+    {{- end}}
+</div>
+{{- end}}
+
+{{define "icon-logo"}}<svg class="logo" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2.5" fill="currentColor"/><path d="M8 10V7a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="12" cy="15.5" r="1.6" fill="#fff"/></svg>{{end}}
+{{define "icon-search"}}<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m13 13 4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>{{end}}
+{{define "icon-plus"}}<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>{{end}}
+{{define "icon-more"}}<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="4" cy="10" r="1.6" fill="currentColor"/><circle cx="10" cy="10" r="1.6" fill="currentColor"/><circle cx="16" cy="10" r="1.6" fill="currentColor"/></svg>{{end}}
+{{define "icon-x"}}<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>{{end}}
+{{define "icon-eye"}}<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M1.5 10S4.5 4 10 4s8.5 6 8.5 6-3 6-8.5 6-8.5-6-8.5-6Z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="10" cy="10" r="2.5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>{{end}}
+{{define "icon-copy"}}<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M13 4.5V4a1.5 1.5 0 0 0-1.5-1.5h-7A1.5 1.5 0 0 0 3 4v7a1.5 1.5 0 0 0 1.5 1.5H5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>{{end}}
+{{define "icon-back"}}<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M12 4 6 10l6 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>{{end}}

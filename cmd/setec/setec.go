@@ -41,6 +41,8 @@ import (
 	"github.com/tink-crypto/tink-go-awskms/v2/integration/awskms"
 	"github.com/tink-crypto/tink-go/v2/tink"
 	"golang.org/x/term"
+	"tailscale.com/client/tailscale/apitype"
+	"tailscale.com/tailcfg"
 	"tailscale.com/tsnet"
 	"tailscale.com/tsweb"
 )
@@ -70,6 +72,10 @@ the node on the tailnet.
 
 With the --dev flag, the server runs with a dummy KMS. This mode is intended
 for debugging and is NOT SAFE for production use.
+
+With --dev and --dev-listen=ADDR, the server does not join a tailnet at all.
+It serves plain HTTP on ADDR (e.g. localhost:8080) and treats every caller
+as a user with full access to all secrets. Use this to work on the web UI.
 
 Otherwise you must provide a key to encrypt the database, using exactly one of:
 
@@ -189,6 +195,7 @@ var serverArgs struct {
 	BackupRole         string `flag:"backup-role,default=$SETEC_BACKUP_ROLE,Name of AWS IAM role to assume to write backups"`
 	LoginServer        string `flag:"login-server,default=$SETEC_LOGIN_SERVER,URL of control server to use for tsnet"`
 	Dev                bool   `flag:"dev,Run in developer mode"`
+	DevListen          string `flag:"dev-listen,Serve plain HTTP on this address with no auth (requires --dev)"`
 }
 
 var clientArgs struct {
@@ -222,6 +229,15 @@ func runServer(env *command.Env) error {
 
 	if serverArgs.StateDir == "" {
 		return errors.New("--state-dir must be specified")
+	}
+	if serverArgs.DevListen != "" {
+		if !serverArgs.Dev {
+			return errors.New("--dev-listen requires --dev")
+		}
+		if kek == nil {
+			return errors.New("--dev-listen does not support --kms-key-name or --tpm-key-file")
+		}
+		return runLocalServer(env, kek)
 	}
 	if serverArgs.Hostname == "" {
 		return errors.New("--hostname must be specified")
@@ -286,29 +302,9 @@ func runServer(env *command.Env) error {
 	mux := http.NewServeMux()
 	tsweb.Debugger(mux)
 
-	auditPath := filepath.Join(serverArgs.StateDir, "audit.log")
-	audit, err := audit.NewFile(auditPath)
+	srv, err := newServer(env, kek, lc.WhoIs, mux)
 	if err != nil {
-		return fmt.Errorf("opening audit log: %w", err)
-	}
-	index, err := loadAccessIndex(auditPath)
-	if err != nil {
-		return fmt.Errorf("reading access index: %w", err)
-	}
-
-	srv, err := server.New(env.Context(), server.Config{
-		DBPath:             filepath.Join(serverArgs.StateDir, "database"),
-		Key:                kek,
-		AuditLog:           audit,
-		AccessIndex:        index, // may be nil, that's OK
-		WhoIs:              lc.WhoIs,
-		BackupBucket:       serverArgs.BackupBucket,
-		BackupBucketRegion: serverArgs.BackupBucketRegion,
-		BackupAssumeRole:   serverArgs.BackupRole,
-		Mux:                mux,
-	})
-	if err != nil {
-		return fmt.Errorf("initializing setec server: %v", err)
+		return err
 	}
 	expvar.Publish("setec_server", srv.Metrics())
 
@@ -344,6 +340,70 @@ func runServer(env *command.Env) error {
 	}
 
 	return nil
+}
+
+// newServer constructs a setec server whose state lives in --state-dir and
+// registers its handlers on mux.
+func newServer(env *command.Env, kek tink.AEAD, whois func(context.Context, string) (*apitype.WhoIsResponse, error), mux *http.ServeMux) (*server.Server, error) {
+	auditPath := filepath.Join(serverArgs.StateDir, "audit.log")
+	audit, err := audit.NewFile(auditPath)
+	if err != nil {
+		return nil, fmt.Errorf("opening audit log: %w", err)
+	}
+	index, err := loadAccessIndex(auditPath)
+	if err != nil {
+		return nil, fmt.Errorf("reading access index: %w", err)
+	}
+
+	srv, err := server.New(env.Context(), server.Config{
+		DBPath:             filepath.Join(serverArgs.StateDir, "database"),
+		Key:                kek,
+		AuditLog:           audit,
+		AccessIndex:        index, // may be nil, that's OK
+		WhoIs:              whois,
+		BackupBucket:       serverArgs.BackupBucket,
+		BackupBucketRegion: serverArgs.BackupBucketRegion,
+		BackupAssumeRole:   serverArgs.BackupRole,
+		Mux:                mux,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("initializing setec server: %v", err)
+	}
+	return srv, nil
+}
+
+// runLocalServer serves the setec server over plain HTTP on --dev-listen,
+// without Tailscale, treating every caller as a fully-privileged dev user.
+func runLocalServer(env *command.Env, kek tink.AEAD) error {
+	mux := http.NewServeMux()
+	if _, err := newServer(env, kek, devWhoIs, mux); err != nil {
+		return err
+	}
+	log.Printf("dev mode: serving WITHOUT AUTHENTICATION on http://%s", serverArgs.DevListen)
+	hs := &http.Server{Addr: serverArgs.DevListen, Handler: tsweb.BrowserHeaderHandler(mux)}
+	go func() {
+		<-env.Context().Done()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		hs.Shutdown(ctx)
+	}()
+	if err := hs.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return fmt.Errorf("serving HTTP: %v", err)
+	}
+	return nil
+}
+
+// devAllAccess is the capability granted to every caller by devWhoIs.
+var devAllAccess = []tailcfg.RawMessage{tailcfg.RawMessage(`{"action":["get","info","put","create-version","activate","delete"],"secret":["*"]}`)}
+
+// devWhoIs is a fake WhoIs for --dev-listen that identifies every caller as
+// a local developer with full access to all secrets.
+func devWhoIs(ctx context.Context, addr string) (*apitype.WhoIsResponse, error) {
+	return &apitype.WhoIsResponse{
+		Node:        &tailcfg.Node{Name: "localhost"},
+		UserProfile: &tailcfg.UserProfile{LoginName: "dev@localhost", DisplayName: "Local Developer"},
+		CapMap:      tailcfg.PeerCapMap{server.ACLCap: devAllAccess},
+	}, nil
 }
 
 func newClient() (*setec.Client, error) {

@@ -1,0 +1,73 @@
+{{define "detail" -}}
+<div id="detail" hx-swap-oob="true">
+    <dl class="facts">
+        <div><dt>Active version</dt><dd>v{{.Info.ActiveVersion}}</dd></div>
+        <div><dt>Versions</dt><dd>{{len .Info.Versions}}</dd></div>
+        <div><dt>Latest version</dt><dd>v{{latest .Info.Versions}}</dd></div>
+        <div><dt>Last accessed</dt><dd>{{with .Info.LastAccess}}<span class="status status-ok" title="{{timeFormat . "2006-01-02 15:04:05 UTC"}}">{{timeAgo .}}</span>{{else}}<span class="status status-off">Unknown</span>{{end}}</dd></div>
+    </dl>
+
+    <h2 class="section-title">Versions</h2>
+    <table class="table versions">
+        <thead><tr><th class="col-version">Version</th><th>Value</th><th class="col-status">Status</th><th class="col-menu"><span class="sr-only">Actions</span></th></tr></thead>
+        <tbody>
+        {{- $p := .Perms}}{{$info := .Info}}
+        {{- range .Versions}}
+        {{- $active := eq . $info.ActiveVersion}}
+        <tr>
+            <td class="col-version"><span class="row-title">v{{.}}</span></td>
+            <td class="value-cell">
+                {{- if $p.Get}}{{template "masked" (valueRef $info.Name .)}}{{else}}<span class="muted">No read access</span>{{end -}}
+            </td>
+            <td class="col-status">{{if $active}}<span class="badge badge-green">Active</span>{{else}}<span class="badge">Inactive</span>{{end}}</td>
+            <td class="col-menu">
+                {{- if and (not $active) (or $p.Activate $p.Delete)}}
+                <details class="menu">
+                    <summary class="btn btn-icon btn-ghost" aria-label="Actions for version {{.}}">{{template "icon-more"}}</summary>
+                    <div class="menu-items">
+                        {{- if $p.Activate}}<button type="button" hx-post="/ui/activate" hx-vals='{"name": {{json $info.Name}}, "version": "{{.}}"}' hx-swap="none">Make active</button>{{end}}
+                        {{- if $p.Delete}}<button type="button" class="danger" hx-post="/ui/delete-version" hx-vals='{"name": {{json $info.Name}}, "version": "{{.}}"}' hx-swap="none" hx-confirm="Delete version {{.}} of {{$info.Name}}? This cannot be undone.">Delete version…</button>{{end}}
+                    </div>
+                </details>
+                {{- end}}
+            </td>
+        </tr>
+        {{- end}}
+        </tbody>
+    </table>
+</div>
+{{- end}}
+
+{{define "header-badges" -}}
+{{- $latest := latest .Info.Versions}}
+<div id="header-badges" class="badges" hx-swap-oob="true">
+    <span class="badge badge-blue">Active v{{.Info.ActiveVersion}}</span>
+    {{- if ne $latest .Info.ActiveVersion}}<span class="badge badge-orange">v{{$latest}} not active</span>{{end}}
+</div>
+{{- end}}
+
+{{define "masked" -}}
+<div class="value masked">
+    <span class="dots" aria-label="Hidden value">••••••••••••••••</span>
+    <button type="button" class="btn btn-sm" hx-post="/ui/reveal" hx-vals='{"name": {{json .Name}}, "version": "{{.Version}}"}' hx-target="closest .value" hx-swap="outerHTML">{{template "icon-eye"}}Reveal</button>
+</div>
+{{- end}}
+
+{{define "value" -}}
+<div class="value revealed">
+    {{- if .Text}}<pre class="mono">{{.Text}}</pre>{{else}}<pre class="mono hex">{{.Hex}}</pre>{{end}}
+    <div class="value-actions">
+        <span class="muted small">{{.Size}} bytes{{if .Hex}} · binary{{end}}</span>
+        {{- if .Text}}<button type="button" class="btn btn-sm" data-copy="{{.Text}}">{{template "icon-copy"}}Copy</button>{{end}}
+        <button type="button" class="btn btn-sm" data-copy="{{.Base64}}">{{template "icon-copy"}}Copy base64</button>
+        <button type="button" class="btn btn-sm btn-ghost" hx-get="/ui/masked" hx-vals='{"name": {{json .Name}}, "version": "{{.Version}}"}' hx-target="closest .value" hx-swap="outerHTML">Hide</button>
+    </div>
+</div>
+{{- end}}
+
+{{define "value-inputs" -}}
+<label class="field"><span class="field-label">Value</span>
+    <textarea class="input mono" name="value" rows="4" spellcheck="false" autocomplete="off" placeholder="Secret value"></textarea></label>
+<label class="field"><span class="field-label">Or upload a file</span>
+    <input class="file" type="file" name="file" /></label>
+{{- end}}

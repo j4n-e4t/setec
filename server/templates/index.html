@@ -1,40 +1,69 @@
-<!DOCTYPE html>
-<html><head>
-    <title>Setec Secrets Service</title>
-    <meta charset="utf-8" />
-    <link rel="stylesheet" type="text/css" href="static/style.css" />
-    <style>
-    </style>
-</head><body>
+{{template "head" .}}
+<div class="page-header">
+    <div>
+        <h1>Secrets</h1>
+        <p class="subtitle">Manage the secrets stored in this setec server.</p>
+    </div>
+    <button type="button" class="btn btn-primary" data-toggle="#new-secret">{{template "icon-plus"}}New secret</button>
+</div>
 
-    <h1>Secrets List</h1>
-    <table>
-        <tr><th>Name</th><th>Versions</th><th>Last Accessed</th></tr>
-        {{- range $info := .}}
-        <tr>
-            <td>{{$info.Name}}</td>
-            <td>
-                {{- range $i, $v := $info.Versions}}
+<section id="new-secret" class="panel" hidden>
+    <div class="panel-header">
+        <h2>New secret</h2>
+        <button type="button" class="btn btn-icon btn-ghost" data-toggle="#new-secret" aria-label="Close">{{template "icon-x"}}</button>
+    </div>
+    <form hx-post="/ui/put" hx-encoding="multipart/form-data" hx-disabled-elt="find button[type=submit]">
+        <label class="field"><span class="field-label">Name</span>
+            <input class="input mono" name="name" required placeholder="prod/service/api-key" autocomplete="off" spellcheck="false" /></label>
+        {{template "value-inputs"}}
+        <div class="form-actions">
+            <button type="button" class="btn" data-toggle="#new-secret">Cancel</button>
+            <button type="submit" class="btn btn-primary">Create secret</button>
+        </div>
+    </form>
+</section>
 
-                {{- if (eq $v $info.ActiveVersion) -}}
-                <b>{{.}}</b>
-                {{- else}}
-                {{- .}}
-                {{- end}}
+<div class="toolbar">
+    <label class="search">
+        {{template "icon-search"}}
+        <input type="search" class="input" placeholder="Search by name…" data-filter="#secrets" aria-label="Search secrets" />
+    </label>
+</div>
+<div class="count-row"><span class="pill"><span data-count>{{len .Secrets}}</span> {{if eq (len .Secrets) 1}}secret{{else}}secrets{{end}}</span></div>
 
-                {{- if (not (lastSecretVersion $i $info.Versions)) }}, {{ end -}}
-
-                {{- end}}
-            </td>
-            <td>
-              {{with $info.LastAccess}}
-                {{- timeFormat . "2006-01-02T15:04:05Z"}}
-              {{- else}}(unknown){{end}}
-            </td>
-        </tr>
-        {{- end}}
-    </table>
-
-    
-</body>
-</html>
+{{if .Secrets}}
+<table id="secrets" class="table">
+    <thead><tr><th>Secret</th><th>Active version</th><th>Last accessed</th><th class="col-menu"><span class="sr-only">Actions</span></th></tr></thead>
+    <tbody>
+    {{- range .Secrets}}
+    {{- $latest := latest .Versions}}
+    <tr data-name="{{.Name}}">
+        <td>
+            <a href="{{secretURL .Name}}" class="row-title">{{.Name}}</a>
+            <div class="badges">
+                <span class="badge">{{len .Versions}} {{if eq (len .Versions) 1}}version{{else}}versions{{end}}</span>
+                {{- if ne $latest .ActiveVersion}}<span class="badge badge-orange" title="Version {{$latest}} exists but is not active">Newer version inactive</span>{{end}}
+            </div>
+        </td>
+        <td>v{{.ActiveVersion}}{{if eq $latest .ActiveVersion}}<div class="muted small">Latest</div>{{else}}<div class="muted small">Latest is v{{$latest}}</div>{{end}}</td>
+        <td>{{with .LastAccess}}<span class="status status-ok" title="{{timeFormat . "2006-01-02 15:04:05 UTC"}}">{{timeAgo .}}</span>{{else}}<span class="status status-off">Unknown</span>{{end}}</td>
+        <td class="col-menu">
+            <details class="menu">
+                <summary class="btn btn-icon btn-ghost" aria-label="Actions for {{.Name}}">{{template "icon-more"}}</summary>
+                <div class="menu-items">
+                    <a href="{{secretURL .Name}}">View secret</a>
+                </div>
+            </details>
+        </td>
+    </tr>
+    {{- end}}
+    </tbody>
+</table>
+<div class="empty" data-empty hidden>No secrets match your search.</div>
+{{else}}
+<div class="empty">
+    <p class="empty-title">No secrets yet</p>
+    <p class="muted">Secrets you have access to will appear here.</p>
+</div>
+{{end}}
+{{template "foot"}}
