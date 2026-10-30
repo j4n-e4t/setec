@@ -28,6 +28,7 @@ Setec is a lightweight secrets management service that uses Tailscale for access
 ### Additional documentation
 
 - [API documentation](api.md)
+- [Web UI](webui.md)
 - [Running a setec server](server.md)
 
 ## Background
